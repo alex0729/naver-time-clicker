@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서버시간 클릭</title>
+<style>
+  :root {
+    --paper: #EEF0F1;
+    --face: #FFFFFF;
+    --ink: #1B1D1F;
+    --digit: #000000;
+    --muted: #6A7076;
+    --rule: #D3D7DA;
+    --signal: #E2001A;
+    --field: #F7F8F9;
+    --clock: "DIN Alternate", "DIN Condensed", -apple-system, sans-serif;
+    --text: -apple-system, "Apple SD Gothic Neo", "Helvetica Neue", sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #131517;
+      --face: #1C1F22;
+      --ink: #E9EBED;
+      --digit: #FFFFFF;
+      --muted: #8D949A;
+      --rule: #2F3439;
+      --signal: #FF3B30;
+      --field: #23272B;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 13px/1.45 var(--text);
+    -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input { -webkit-user-select: text; user-select: text; }
+  main { display: flex; flex-direction: column; height: 100%; }
+
+  /* 문자판 */
+  .dial {
+    background: var(--face);
+    border-bottom: 1px solid var(--rule);
+    padding: 28px 24px 18px;
+    position: relative;
+  }
+  .clock {
+    font-family: var(--clock);
+    font-weight: 700;
+    font-size: 64px;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    color: var(--digit);
+  }
+  .clock .ms { font-size: 28px; color: var(--muted); margin-left: 2px; }
+  .clock.unsynced { color: var(--muted); }
+  .tick {
+    position: absolute; top: 30px; right: 24px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--rule);
+  }
+  .synced .tick { background: var(--signal); opacity: .25; transition: opacity .5s ease-out; }
+  .synced .tick.on { opacity: 1; transition: none; }
+  .status { margin: 14px 0 0; color: var(--muted); min-height: 19px; }
+  .status.armed { color: var(--signal); font-variant-numeric: tabular-nums; }
+  .status.error { color: var(--signal); }
+
+  .warn {
+    margin: 0; padding: 10px 24px;
+    background: var(--signal); color: #fff;
+  }
+
+  /* 본문 */
+  section.body { padding: 20px 24px 0; flex: 1; overflow-y: auto; }
+  h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+  .group + .group { margin-top: 22px; }
+
+  label.field { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 12px; }
+  label.field + label.field { margin-top: 8px; }
+  input {
+    font: inherit; color: var(--ink);
+    background: var(--field);
+    border: 1px solid var(--rule); border-radius: 4px;
+    padding: 6px 8px; width: 100%; min-width: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  input:focus { outline: none; border-color: var(--ink); }
+  input::placeholder { color: var(--muted); opacity: .6; }
+  input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  #at { font-family: var(--clock); font-size: 18px; padding: 6px 10px; }
+
+  details { margin-top: 12px; }
+  summary { color: var(--muted); cursor: default; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "+ "; }
+  details[open] summary::before { content: "− "; }
+  details[open] summary { margin-bottom: 10px; }
+
+  /* 단계 */
+  .row {
+    display: grid;
+    grid-template-columns: 16px 1fr 1fr 44px 1fr 1fr 40px 22px;
+    gap: 6px; align-items: center;
+  }
+  .row.head { color: var(--muted); font-size: 11px; padding-bottom: 4px; }
+  .row.head span { padding-left: 2px; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  #rows li + li { margin-top: 6px; }
+  #rows input { padding: 5px 6px; text-align: right; }
+  .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  button {
+    font: inherit; color: var(--ink);
+    background: none; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 5px 8px; cursor: default;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible, summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  button:disabled { opacity: .45; }
+  button.pick { padding: 5px 0; font-variant-numeric: tabular-nums; }
+  button.pick.counting { border-color: var(--signal); color: var(--signal); }
+  button.del { border: 0; padding: 0; color: var(--muted); font-size: 16px; line-height: 1; }
+  button.del:hover { color: var(--ink); }
+  button.add { border: 0; padding: 0; margin-top: 10px; color: var(--muted); }
+  button.add:hover { color: var(--ink); }
+
+  #log { color: var(--muted); font-variant-numeric: tabular-nums; max-height: 92px; overflow-y: auto; }
+  #log li:first-child { color: var(--ink); }
+  #log:empty::before { content: "예약하면 클릭마다 서버 기준 시각이 남습니다."; }
+
+  footer {
+    display: flex; gap: 8px; justify-content: space-between;
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--rule);
+    margin-top: 16px;
+  }
+  footer button { padding: 9px 16px; }
+  .primary { background: var(--ink); color: var(--face); border-color: var(--ink); min-width: 120px; font-weight: 600; }
+  .primary:hover { border-color: var(--ink); opacity: .88; }
+  .primary.armed { background: none; color: var(--signal); border-color: var(--signal); }
+
+  @media (prefers-reduced-motion: reduce) { .synced .tick { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <p class="warn" id="warn" hidden>클릭이 실행되지 않습니다. 시스템 설정 &gt; 개인정보 보호 및 보안 &gt; 손쉬운 사용에서 ServerTimeClick을 켠 뒤 앱을 다시 여세요. 터미널로 실행했다면 터미널을 켜세요.</p>
+
+  <section class="dial" id="dial">
+    <div class="clock unsynced" id="clock"><span id="hms">--:--:--</span><span class="ms" id="ms">.---</span></div>
+    <i class="tick" id="tick" aria-hidden="true"></i>
+    <p class="status" id="status" role="status">내 Mac 시각입니다. 동기화하면 서버 시각으로 바뀝니다.</p>
+  </section>
+
+  <section class="body">
+    <div class="group">
+      <label class="field">첫 클릭 시각 <input id="at" placeholder="20:00:00.000" spellcheck="false" autocomplete="off"></label>
+      <details>
+        <summary>고급 설정</summary>
+        <label class="field">기준 서버 <input id="url" spellcheck="false" autocomplete="off"></label>
+        <label class="field">미리 클릭 (ms) <input id="early" type="number" min="0" value="0"></label>
+      </details>
+    </div>
+
+    <div class="group">
+      <h2>클릭 순서</h2>
+      <div class="row head" aria-hidden="true">
+        <span></span><span>X</span><span>Y</span><span>횟수</span><span>연타 간격</span><span>다음까지</span><span></span><span></span>
+      </div>
+      <ol id="rows"></ol>
+      <button class="add" id="add">단계 추가</button>
+    </div>
+
+    <div class="group">
+      <h2>기록</h2>
+      <ol id="log"></ol>
+    </div>
+  </section>
+
+  <footer>
+    <button id="sync">동기화</button>
+    <button class="primary" id="arm">예약</button>
+  </footer>
+</main>
+
+<template id="row">
+  <li class="row">
+    <span class="n"></span>
+    <input type="number" aria-label="X 좌표">
+    <input type="number" aria-label="Y 좌표">
+    <input type="number" min="1" aria-label="횟수">
+    <input type="number" min="0" aria-label="연타 간격 ms" placeholder="ms">
+    <input type="number" min="0" aria-label="다음 단계까지 ms" placeholder="ms">
+    <button class="pick" title="3초 뒤 마우스 위치를 가져옵니다">위치</button>
+    <button class="del" aria-label="단계 삭제">×</button>
+  </li>
+</template>
+
+<script>
+const $ = id => document.getElementById(id);
+const pad = (n, w = 2) => String(n).padStart(w, "0");
+
+// 브라우저 미리보기용 가짜 API (pywebview 밖에서만 사용)
+const mock = {
+  load: async () => ({ steps: [[812, 430, 10, 50, 300], [900, 500, 1, 0, 0]], at: "20:00:00.000", url: "https://www.naver.com", early: 0, axOk: true }),
+  sync: async () => (await new Promise(r => setTimeout(r, 600)), { offset: 0.0035, rtt: 0.003 }),
+  pick: async () => (await new Promise(r => setTimeout(r, 3000)), [640, 400]),
+  arm: async () => ({ offset: 0.0035, rtt: 0.003, target: Date.now() / 1000 + 12 }),
+  cancel: async () => onDone(false),
+};
+
+let api, offset = null, target = null, armed = false, lastSec = 0;
+
+function host() {
+  try { return new URL($("url").value.includes("://") ? $("url").value : "https://" + $("url").value).host; }
+  catch { return $("url").value; }
+}
+
+function setStatus(text, kind = "") {
+  $("status").textContent = text;
+  $("status").className = "status " + kind;
+}
+
+function syncedStatus() {
+  const ms = Math.round(offset * 1000);
+  const diff = ms === 0 ? "내 Mac과 같음" : `내 Mac보다 ${Math.abs(ms)}ms ${ms > 0 ? "빠름" : "느림"}`;
+  return `${host()} 서버 시각입니다. ${diff}.`;
+}
+
+// 시계
+function frame() {
+  const now = Date.now() / 1000 + (offset ?? 0);
+  const d = new Date(now * 1000);
+  $("hms").textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  $("ms").textContent = "." + pad(d.getMilliseconds(), 3);
+  const sec = Math.floor(now);
+  if (sec !== lastSec) {
+    lastSec = sec;
+    $("tick").classList.add("on");
+    requestAnimationFrame(() => requestAnimationFrame(() => $("tick").classList.remove("on")));
+  }
+  if (armed && target) {
+    const left = Math.max(0, target - now);
+    setStatus(`첫 클릭까지 ${pad(Math.floor(left / 60))}:${pad(Math.floor(left % 60))}.${pad(Math.floor(left * 1000 % 1000), 3)}`, "armed");
+  }
+  requestAnimationFrame(frame);
+}
+
+function applySync(res) {
+  offset = res.offset;
+  $("clock").classList.remove("unsynced");
+  $("dial").classList.add("synced");
+}
+
+// 단계 목록
+function addRow(s = ["", "", 1, 0, 0]) {
+  const li = $("row").content.firstElementChild.cloneNode(true);
+  li.querySelectorAll("input").forEach((inp, i) => inp.value = s[i]);
+  li.querySelector(".del").onclick = () => { li.remove(); renumber(); };
+  li.querySelector(".pick").onclick = e => pick(li, e.currentTarget);
+  $("rows").append(li);
+  renumber();
+}
+
+function renumber() {
+  [...$("rows").children].forEach((li, i) => li.querySelector(".n").textContent = i + 1);
+  const only = $("rows").children.length === 1;
+  $("rows").querySelectorAll(".del").forEach(b => b.disabled = only);
+}
+
+function readSteps() {
+  return [...$("rows").children].map(li => [...li.querySelectorAll("input")].map(inp => Number(inp.value || 0)));
+}
+
+async function pick(li, btn) {
+  if (btn.classList.contains("counting")) return;
+  btn.classList.add("counting");
+  let n = 3;
+  btn.textContent = n;
+  const t = setInterval(() => { if (--n > 0) btn.textContent = n; }, 1000);
+  const [x, y] = await api.pick();
+  clearInterval(t);
+  const inputs = li.querySelectorAll("input");
+  inputs[0].value = x; inputs[1].value = y;
+  btn.textContent = "위치";
+  btn.classList.remove("counting");
+}
+
+// 동작
+async function sync() {
+  $("sync").disabled = true;
+  setStatus("서버 시각을 맞추는 중입니다.");
+  const res = await api.sync($("url").value);
+  $("sync").disabled = false;
+  if (res.error) return setStatus(res.error, "error");
+  applySync(res);
+  setStatus(syncedStatus());
+}
+
+async function arm() {
+  if (armed) return api.cancel();
+  if (!$("at").value.trim()) { $("at").focus(); return setStatus("첫 클릭 시각을 입력하세요. 예: 20:00:00.000", "error"); }
+  $("arm").disabled = $("sync").disabled = true;
+  setStatus("서버 시각을 맞추고 예약하는 중입니다.");
+  const res = await api.arm($("at").value, readSteps(), $("url").value, Number($("early").value || 0));
+  $("arm").disabled = false;
+  if (res.error) { $("sync").disabled = false; return setStatus(res.error, "error"); }
+  applySync(res);
+  target = res.target;
+  armed = true;
+  $("log").replaceChildren();
+  $("arm").textContent = "취소";
+  $("arm").classList.add("armed");
+  document.querySelectorAll(".body input, .body button").forEach(el => el.disabled = true);
+}
+
+function onLog(msg) {
+  const li = document.createElement("li");
+  li.textContent = msg;
+  $("log").prepend(li);
+}
+
+function onDone(ok) {
+  armed = false;
+  target = null;
+  $("arm").textContent = "예약";
+  $("arm").classList.remove("armed");
+  $("sync").disabled = false;
+  document.querySelectorAll(".body input, .body button").forEach(el => el.disabled = false);
+  renumber();
+  setStatus(ok ? "실행 완료. " + syncedStatus() : "예약을 취소했습니다.");
+}
+
+// 시작
+// pywebview API가 주입될 때까지 기다린다. 1.5초 안에 pywebview가 없으면 브라우저 미리보기.
+const ready = new Promise(r => {
+  const t0 = Date.now();
+  (function poll() {
+    if (window.pywebview?.api?.load) return r();
+    if (!window.pywebview && Date.now() - t0 > 1500) return r();
+    setTimeout(poll, 50);
+  })();
+});
+
+ready.then(async () => {
+  api = window.pywebview?.api ?? mock;
+  const s = await api.load();
+  $("at").value = s.at;
+  $("url").value = s.url;
+  $("early").value = s.early;
+  s.steps.forEach(addRow);
+  $("warn").hidden = s.axOk;
+  $("add").onclick = () => addRow();
+  $("sync").onclick = sync;
+  $("arm").onclick = arm;
+  requestAnimationFrame(frame);
+  sync();
+});
+</script>
+</body>
+</html>

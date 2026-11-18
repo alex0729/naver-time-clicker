@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.macro_state.json
+steps.txt
+build/
+dist/
+*.spec
