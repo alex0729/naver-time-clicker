@@ -18,16 +18,16 @@ STEPS_FILE = DATA / "steps.txt"
 STATE_FILE = DATA / ".macro_state.json"  # 마지막 시각·URL
 
 
-def accessibility_ok():
+def accessibility_ok(prompt=False):
     """손쉬운 사용 권한이 없으면 클릭이 조용히 무시된다.
-    없으면 macOS 권한 요청 창을 띄워 앱을 목록에 자동 추가한다."""
+    prompt=True면 macOS 권한 요청 창을 띄워 앱을 목록에 자동 추가한다."""
     try:
         import objc
         from Foundation import NSDictionary
         lib = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
         lib.AXIsProcessTrustedWithOptions.restype = ctypes.c_bool
         lib.AXIsProcessTrustedWithOptions.argtypes = [ctypes.c_void_p]
-        opts = NSDictionary.dictionaryWithObject_forKey_(True, "AXTrustedCheckOptionPrompt")
+        opts = NSDictionary.dictionaryWithObject_forKey_(prompt, "AXTrustedCheckOptionPrompt")
         return lib.AXIsProcessTrustedWithOptions(objc.pyobjc_id(opts))
     except (OSError, ImportError, AttributeError):
         return True  # 확인 불가 → 경고하지 않음
@@ -49,8 +49,11 @@ class Api:
             "at": state.get("at", ""),
             "url": state.get("url", macro.DEFAULT_URL),
             "early": state.get("early", 0),
-            "axOk": accessibility_ok(),
+            "axOk": accessibility_ok(prompt=True),
         }
+
+    def ax_status(self):
+        return accessibility_ok()
 
     def sync(self, url):
         try:

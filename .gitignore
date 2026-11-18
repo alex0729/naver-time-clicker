@@ -5,3 +5,4 @@ steps.txt
 build/
 dist/
 *.spec
+.DS_Store

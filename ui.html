@@ -359,6 +359,11 @@ ready.then(async () => {
   $("early").value = s.early;
   s.steps.forEach(addRow);
   $("warn").hidden = s.axOk;
+  if (!s.axOk && api.ax_status) {  // 권한을 켜면 재시작 없이 경고를 내린다
+    const t = setInterval(async () => {
+      if (await api.ax_status()) { $("warn").hidden = true; clearInterval(t); }
+    }, 2000);
+  }
   $("add").onclick = () => addRow();
   $("sync").onclick = sync;
   $("arm").onclick = arm;
